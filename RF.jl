@@ -1,4 +1,9 @@
-a = [2 4; 6 16]
+sigma_s::float;
+sigma_r::float;
+
+a = [1 2 3;
+     4 5 6;
+     7 8 9]
 
 # Calculating the partial derivatives
 dxP = diff(a, dims=2)
@@ -27,17 +32,16 @@ for i in 1:1
     end
 end
 
-println("Original:")
-for row in eachrow(a)
-    println(row)
-end
+# Calculating the scaling factor so it does not have to be calculated in every iteration
+scaling_factor::float = sigma_s / sigma_r
 
-println("dxI:")
-for row in eachrow(dxI)
-    println(row)
-end
+# Calculating the horizontal and vertical derivatives of the transformed domain
+dHx = zeros(size(a))
+dVy = zeros(size(a))
 
-println("dyI:")
-for row in eachrow(dyI)
-    println(row)
+for i in 1:rows
+    for j in 1:cols
+        dHx[i][j] = 1 +  (scaling_factor * dxI[i][j])
+        dVy[i][j] = 1 +  (scaling_factor * dyI[i][j])
+    end
 end
