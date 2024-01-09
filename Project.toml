@@ -1,2 +1,7 @@
 [deps]
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+ImageIO = "82e4d734-157c-48bb-816b-45c225c6df19"
+ImageMagick = "6218d12a-5da1-5696-b52f-db25d2ecc6d1"
+ImageShow = "4e3cecfd-b093-5904-9786-8bbb286a6a31"
 Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
+TestImages = "5e47fb64-e119-507b-a336-dd2b206d9990"
