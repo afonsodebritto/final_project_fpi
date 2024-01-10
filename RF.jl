@@ -1,8 +1,3 @@
-using TestImages
-img = testimage("mandrill")
-using Images
-display(img)
-
 function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, sigma_s::Float64, sigma_r::Float64)
     # Extracting each channel
     red_channel = red.(img)
@@ -64,4 +59,46 @@ function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB, 2}, red_derivative
     ad_red = a.^red_derivative
     ad_green = a.^green_derivative
     ad_blue = a.^blue_derivative
+    j::AbstractArray{<:ColorTypes.RGB, 2} = img
+
+    # Getting the width of the image
+    w = size(j, 2)
+
+    # Equation 21 of the paper
+    # J[n] = (1 - a^d)*I[n] + a^d*J[n - 1]
+    for i in 2:w
+        j.red[:, i] .= (1 .- ad_red[:, i]) .* j.red[:, i] + ad_red[:, i] .* (j.red[:, i-1] - j.red[:, i])
+        j.green[:, i] .= (1 .- ad_green[:, i]) .* j.green[:, i] + ad_green[:, i] .* (j.green[:, i-1] - j.green[:, i])
+        j.blue[:, i] .= (1 .- ad_blue[:, i]) .* j.blue[:, i] + ad_blue[:, i] .* (j.blue[:, i-1] - j.blue[:, i])
+    end
+
+    for i in w-1:-1:1
+        j.red[:, i] .= (1 .- ad_red[:, i]) .* j.red[:, i] + ad_red[:, i] .* (j.red[:, i+1] - j.red[:, i])
+        j.green[:, i] .= (1 .- ad_green[:, i]) .* j.green[:, i] + ad_green[:, i] .* (j.green[:, i+1] - j.green[:, i])
+        j.blue[:, i] .= (1 .- ad_blue[:, i]) .* j.blue[:, i] + ad_blue[:, i] .* (j.blue[:, i+1] - j.blue[:, i])
+    end
+
 end
+
+function TransposeImage(img::AbstractArray{<:Colors.RGB, 2})
+    # Getting the height of the image
+    h = size(img, 1)
+    
+    # Creating a transposed image with the correct size
+    transposed_image = similar(img, size(img, 2), size(img, 1))
+    
+    for i in 1:h
+        transposed_image[:, i] = img[i, :]
+    end
+    
+    return transposed_image
+end
+
+using TestImages
+using Images
+
+img = testimage("mandrill")
+display(img)
+
+transposed_img = TransposeImage(img)
+display(transposed_img)
