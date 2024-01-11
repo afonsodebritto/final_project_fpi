@@ -49,9 +49,6 @@ function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, sigma_s::Flo
     dx_horizontal_transf_blue = ones(size(blue_channel)) .+  (sigma_s ÷ sigma_r) * dx_normal_blue
     dy_vertical_transf_blue = ones(size(blue_channel)) .+  (sigma_s ÷ sigma_r) * dy_normal_blue
 
-    # Returning the two derivatives
-    return dx_horizontal_transf, dy_vertical_transf
-
 end
 
 function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB, 2}, red_derivative::Array{Float64, 2}, green_derivative::Array{Float64, 2}, blue_derivative::Array{Float64, 2},sigma_h::Float64)
