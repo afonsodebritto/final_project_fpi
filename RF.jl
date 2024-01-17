@@ -1,53 +1,43 @@
-function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, sigma_s::Float64, sigma_r::Float64)
-    # Extracting each channel
-    red_channel = red.(img)
-    green_channel = green.(img)
-    blue_channel = blue.(img)
-
-    # Calculating the partial derivatives for each channel
+function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, sigma_s::Float32, sigma_r::Float32)
+    # Calculating the partial derivatives for all the channels
     # I'k(x)
     # I'k(y)
-    dx_partial_red = diff(red_channel, dims=2)
-    dy_partial_red = diff(red_channel, dims=1)
-    dx_partial_green = diff(green_channel, dims=2)
-    dy_partial_green = diff(green_channel, dims=1)
-    dx_partial_blue = diff(blue_channel, dims=2)
-    dy_partial_blue = diff(blue_channel, dims=1)
+    I = float.(img)
+    dx_partial = diff(I, dims=2)
+    dy_partial = diff(I, dims=1)
 
-    # Creating the accumulated derivative matrixes for each channel
-    dx_normal_red = zeros(size(red_channel))
-    dy_normal_red = zeros(size(red_channel))
-    dx_normal_green = zeros(size(green_channel))
-    dy_normal_green = zeros(size(green_channel))
-    dx_normal_blue = zeros(size(blue_channel))
-    dy_normal_blue = zeros(size(blue_channel))
+    # Creating the accumulated derivative matrixes for all the channels
+    h = size(I, 1)
+    w = size(I, 2)
+    dx_normal::Matrix{Float32} = zeros(Float32, h, w)
+    dy_normal::Matrix{Float32} = zeros(Float32, h, w)
 
-    # Calculating the l1-normal distance of the pixels for each color channel
+    # Calculating the l1-normal distance of the pixels
     # Σ|I'k(x)|
     # Where k is the color channel
-    dx_normal_red[:,2:end] = dx_normal_red[:,2:end] .+ abs(dx_partial_red)
-    dx_normal_green[:,2:end] = dx_normal_green[:,2:end] .+ abs(dx_partial_green)
-    dx_normal_blue[:,2:end] = dx_normal_blue[:,2:end] .+ abs(dx_partial_blue)
-    # Σ|I'k(Y)|
-    dy_normal_red[2:end,:] = dy_normal_red[2:end,:] .+ abs(dy_partial_red)
-    dy_normal_green[2:end,:] = dy_normal_green[2:end,:] .+ abs(dy_partial_green)
-    dy_normal_blue[2:end,:] = dy_normal_blue[2:end,:] .+ abs(dy_partial_blue)
+    dx_partial = float.(channelview(dx_partial))
+    for i in 1:3
+        dx_normal[:, 2:end] = dx_normal[:, 2:end] + abs.(dx_partial[i, :, :])
+    end
 
-    # Calculating the horizontal and vertical derivatives of the transformed domain of each color channel
-    # (1 + Σ|I'k(x)|) dx
-    dx_horizontal_transf_red = zeros(size(red_channel))
-    dy_vertical_transf_red = zeros(size(red_channel))
-    dx_horizontal_transf_green = zeros(size(green_channel))
-    dy_vertical_transf_green = zeros(size(green_channel))
-    dx_horizontal_transf_blue = zeros(size(blue_channel))
-    dy_vertical_transf_blue = zeros(size(blue_channel))
+    # Σ|I'k(Y)|
+    # Where k is the color channel
+    dy_partial = float.(channelview(dy_partial))
+    for i in 1:3
+        dy_normal[2:end, :] = dy_normal[2:end, :] + abs.(dy_partial[i, :, :])
+    end
+
+    # Calculating the horizontal and vertical derivatives of the transformed domain
+    # (1 + (σs÷σr)*Σ|I'k(x)|) dx
+    dx_horizontal::Matrix{Float32} = ones(Float32, h, w)
+    sigma_s = 0
+    sigma_r = 1
+
+    dx_horizontal += (sigma_s ÷ sigma_r) * dx_normal
+
     # (1 + Σ|I'k(y)|) dy
-    dx_horizontal_transf_red = ones(size(red_channel)) .+  (sigma_s ÷ sigma_r) * dx_normal_red
-    dy_vertical_transf_red = ones(size(red_channel)) .+  (sigma_s ÷ sigma_r) * dy_normal_red
-    dx_horizontal_transf_green = ones(size(green_channel)) .+  (sigma_s ÷ sigma_r) * dx_normal_green
-    dy_vertical_transf_green = ones(size(green_channel)) .+  (sigma_s ÷ sigma_r) * dy_normal_green
-    dx_horizontal_transf_blue = ones(size(blue_channel)) .+  (sigma_s ÷ sigma_r) * dx_normal_blue
-    dy_vertical_transf_blue = ones(size(blue_channel)) .+  (sigma_s ÷ sigma_r) * dy_normal_blue
+    dy_horizontal::Matrix{Float32} = ones(Float32, h, w)
+    dy_horizontal += (sigma_s ÷ sigma_r) * dy_normal
 
 end
 
@@ -64,16 +54,18 @@ function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB, 2}, red_derivative
     # Equation 21 of the paper
     # J[n] = (1 - a^d)*I[n] + a^d*J[n - 1]
     for i in 2:w
-        j.red[:, i] .= (1 .- ad_red[:, i]) .* j.red[:, i] + ad_red[:, i] .* (j.red[:, i-1] - j.red[:, i])
-        j.green[:, i] .= (1 .- ad_green[:, i]) .* j.green[:, i] + ad_green[:, i] .* (j.green[:, i-1] - j.green[:, i])
-        j.blue[:, i] .= (1 .- ad_blue[:, i]) .* j.blue[:, i] + ad_blue[:, i] .* (j.blue[:, i-1] - j.blue[:, i])
+        red.(j[:, i]) .= (1 .- ad_red[:, i]) .* red.(j[:, i]) + ad_red[:, i] .* (red.(j[:, i-1]) - red.(j[:, i]))
+        green.(j[:, i]) .= (1 .- ad_green[:, i]) .* green.(j[:, i]) + ad_green[:, i] .* (green.(j[:, i-1]) - green.(j[:, i]))
+        blue.(j[:, i]) .= (1 .- ad_blue[:, i]) .* blue.(j[:, i]) + ad_blue[:, i] .* (blue.(j[:, i-1]) - blue.j([:, i]))
     end
 
     for i in w-1:-1:1
-        j.red[:, i] .= (1 .- ad_red[:, i]) .* j.red[:, i] + ad_red[:, i] .* (j.red[:, i+1] - j.red[:, i])
-        j.green[:, i] .= (1 .- ad_green[:, i]) .* j.green[:, i] + ad_green[:, i] .* (j.green[:, i+1] - j.green[:, i])
-        j.blue[:, i] .= (1 .- ad_blue[:, i]) .* j.blue[:, i] + ad_blue[:, i] .* (j.blue[:, i+1] - j.blue[:, i])
+        red.(j[:, i]) .= (1 .- ad_red[:, i]) .* red.(j[:, i]) + ad_red[:, i] .* (red.(j[:, i+1]) - red.(j[:, i]))
+        green.(j[:, i]) .= (1 .- ad_green[:, i]) .* green.(j[:, i]) + ad_green[:, i] .* (green.(j[:, i+1]) - green.(j[:, i]))
+        blue.(j[:, i]) .= (1 .- ad_blue[:, i]) .* blue.(j[:, i]) + ad_blue[:, i] .* (blue.(j[:, i+1]) - blue.(j[:, i]))
     end
+
+    return j
 
 end
 
@@ -91,11 +83,5 @@ function TransposeImage(img::AbstractArray{<:Colors.RGB, 2})
     return transposed_image
 end
 
-using TestImages
-using Images
-
-img = testimage("mandrill")
-display(img)
-
-transposed_img = TransposeImage(img)
-display(transposed_img)
+using Images, FileIO
+img = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\statue.png")
