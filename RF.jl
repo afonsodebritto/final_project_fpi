@@ -1,8 +1,8 @@
-function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, sigma_s::Float32, sigma_r::Float32)
+function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, σs::Float32, σr::Float32, N::Integer)
     # Calculating the partial derivatives for all the channels
     # I'k(x)
     # I'k(y)
-    I = float.(img)
+    I = float.(copy(img))
     dx_partial = diff(I, dims=2)
     dy_partial = diff(I, dims=1)
 
@@ -28,45 +28,81 @@ function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, sigma_s::Flo
     end
 
     # Calculating the horizontal and vertical derivatives of the transformed domain
-    # (1 + (σs÷σr)*Σ|I'k(x)|) dx
+    # (1 + (σs÷σr)*Σ|I'k(x)|) dx    
     dx_horizontal::Matrix{Float32} = ones(Float32, h, w)
-    sigma_s = 0
-    sigma_r = 1
 
-    dx_horizontal += (sigma_s ÷ sigma_r) * dx_normal
+    dx_horizontal += (σs ÷ σr) * dx_normal
 
     # (1 + Σ|I'k(y)|) dy
-    dy_horizontal::Matrix{Float32} = ones(Float32, h, w)
-    dy_horizontal += (sigma_s ÷ sigma_r) * dy_normal
+    dy_vertical::Matrix{Float32} = ones(Float32, h, w)
+    dy_vertical += (σs ÷ σr) * dy_normal
 
+    σH = σS
+    # Image to be filtered
+    F = copy(img)
+
+    # Performing the Recursive Filtering
+    for i in 1:N
+        #=
+        Equation 14 of the paper
+        Calculating the sigma value for this num_interations
+        =# 
+
+        σHi = (σH * sqrt(3)) * ((2 ^ N - i) ÷ (sqrt(4^N - 1)))
+
+        F = RecursiveFilter(F, dx_horizontal, σHi)
+        # Transpose the image for the vertical pass of the filter
+        F = TransposeImage(F)
+
+        F = RecursiveFilter(F, dy_vertical, σHi)
+        F = TransposeImage(F)
+    end
+
+    return F
 end
 
-function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB, 2}, red_derivative::Array{Float64, 2}, green_derivative::Array{Float64, 2}, blue_derivative::Array{Float64, 2},sigma_h::Float64)
-    a = exp(-sqrt(2) ÷ sigma_h)
-    ad_red = a.^red_derivative
-    ad_green = a.^green_derivative
-    ad_blue = a.^blue_derivative
-    j::AbstractArray{<:ColorTypes.RGB, 2} = img
+function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB}, derivative::Matrix{Float32}, σH::Float32)
+    J = copy(channelview(img))
+    # Getting the dimensions of the image
+    # Number of channels
+    channels = size(J, 1)
+    # Number of rows
+    h = size(J, 2)
+    # Number of columns
+    w = size(J, 3)
+    
+    # Calculating the feedback coefficient
+    a = exp(-sqrt(2) ÷ σH)
 
-    # Getting the width of the image
-    w = size(j, 2)
+    #=
+    a^d
+    Where a is the feedback coefficient
+    And d = ct(x[n]) - ct(x[n-1])
+    So d is the distance between neighbor samples x[n] and x[n-1] in the transformed domain
+    That's why we use the l1 norm of the pixels
+    =#
+    a_d = a .^ derivative
 
-    # Equation 21 of the paper
-    # J[n] = (1 - a^d)*I[n] + a^d*J[n - 1]
+    #= 
+    Equation 21 of the paper
+    J[n] = (1 - a^d)*I[n] + a^d*J[n - 1]
+    Where [n - 1] can be interpreted as the distance between samples x[n - 1] and x[n]
+    =#
+    # Left -> Right filtering
     for i in 2:w
-        red.(j[:, i]) .= (1 .- ad_red[:, i]) .* red.(j[:, i]) + ad_red[:, i] .* (red.(j[:, i-1]) - red.(j[:, i]))
-        green.(j[:, i]) .= (1 .- ad_green[:, i]) .* green.(j[:, i]) + ad_green[:, i] .* (green.(j[:, i-1]) - green.(j[:, i]))
-        blue.(j[:, i]) .= (1 .- ad_blue[:, i]) .* blue.(j[:, i]) + ad_blue[:, i] .* (blue.(j[:, i-1]) - blue.j([:, i]))
+        for c in 1:channels
+            J[c, :, i] = J[c, :, i] + a_d[:, i] .* (J[c, :, i-1] - J[c, :, i])
+        end
     end
 
+    # Right -> Left filtering
     for i in w-1:-1:1
-        red.(j[:, i]) .= (1 .- ad_red[:, i]) .* red.(j[:, i]) + ad_red[:, i] .* (red.(j[:, i+1]) - red.(j[:, i]))
-        green.(j[:, i]) .= (1 .- ad_green[:, i]) .* green.(j[:, i]) + ad_green[:, i] .* (green.(j[:, i+1]) - green.(j[:, i]))
-        blue.(j[:, i]) .= (1 .- ad_blue[:, i]) .* blue.(j[:, i]) + ad_blue[:, i] .* (blue.(j[:, i+1]) - blue.(j[:, i]))
-    end
+        for i in 1:c
+            J[c, i, :] = J[c, i, :] + a_d[:, i + 1] .* (J[c, :, i + 1] - J[c, :, i])
+        end
+    end 
 
-    return j
-
+    return J
 end
 
 function TransposeImage(img::AbstractArray{<:Colors.RGB, 2})
@@ -85,3 +121,4 @@ end
 
 using Images, FileIO
 img = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\statue.png")
+F = TransformedDomain(img, )
