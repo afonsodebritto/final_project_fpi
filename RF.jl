@@ -1,45 +1,62 @@
-function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, σs::Float32, σr::Float32, N::Integer)
+function TransformedDomainRecursiveFilter(img, σs, σr, N)
     # Calculating the partial derivatives for all the channels
     # I'k(x)
     # I'k(y)
-    I = float.(copy(img))
-    dx_partial = diff(I, dims=2)
-    dy_partial = diff(I, dims=1)
+    I = float.(channelview(img))
+    J = I
+    dx_partial = diff(J, dims=3)
+    dy_partial = diff(J, dims=2)
 
     # Creating the accumulated derivative matrixes for all the channels
-    h = size(I, 1)
-    w = size(I, 2)
-    dx_normal::Matrix{Float32} = zeros(Float32, h, w)
-    dy_normal::Matrix{Float32} = zeros(Float32, h, w)
-
+    channels = size(J, 1)
+    h = size(J, 2)
+    w = size(J, 3)
+    dx_normal = zeros(h, w)
+    dy_normal = zeros(h, w)
     # Calculating the l1-normal distance of the pixels
     # Σ|I'k(x)|
     # Where k is the color channel
-    dx_partial = float.(channelview(dx_partial))
-    for i in 1:3
-        dx_normal[:, 2:end] = dx_normal[:, 2:end] + abs.(dx_partial[i, :, :])
+    for c in 1:channels
+        for i in 1:h
+            for j in 2:w
+                dx_normal[i, j] = dx_normal[i, j] + abs(dx_partial[c, i, j - 1])
+            end
+        end
     end
 
     # Σ|I'k(Y)|
     # Where k is the color channel
-    dy_partial = float.(channelview(dy_partial))
-    for i in 1:3
-        dy_normal[2:end, :] = dy_normal[2:end, :] + abs.(dy_partial[i, :, :])
+    for c in 1:channels
+        for i in 2:h
+            for j in 1:w
+                dy_normal[i, j] = dy_normal[i, j] + abs(dy_partial[c, i - 1, j])
+            end
+        end
     end
 
     # Calculating the horizontal and vertical derivatives of the transformed domain
     # (1 + (σs÷σr)*Σ|I'k(x)|) dx    
-    dx_horizontal::Matrix{Float32} = ones(Float32, h, w)
-
-    dx_horizontal += (σs ÷ σr) * dx_normal
+    dx_horizontal = ones(h, w)
+    for i in 1:h
+        for j in 1:w
+            dx_horizontal[i, j] = dx_horizontal[i, j] + (σs ÷ σr) * dx_normal[i, j]
+        end
+    end
 
     # (1 + Σ|I'k(y)|) dy
-    dy_vertical::Matrix{Float32} = ones(Float32, h, w)
-    dy_vertical += (σs ÷ σr) * dy_normal
+    dy_vertical = ones(h, w)
+    for i in 1:h
+        for j in 1:w
+            dy_vertical[i, j] = dy_vertical[i, j] + (σs ÷ σr) * dy_normal[i, j]
+        end
+    end 
 
-    σH = σS
+    σH = σs
     # Image to be filtered
-    F = copy(img)
+    F = I
+
+    # The vertical pass is performed on a transposed image, therefore we transpose the vertical derivative
+    dy_vertical = TransposeMatrix(dy_vertical)
 
     # Performing the Recursive Filtering
     for i in 1:N
@@ -48,21 +65,22 @@ function TransformedDomain(img::AbstractArray{<:ColorTypes.RGB, 2}, σs::Float32
         Calculating the sigma value for this num_interations
         =# 
 
-        σHi = (σH * sqrt(3)) * ((2 ^ N - i) ÷ (sqrt(4^N - 1)))
+        σHi = σH * sqrt(3) * 2^(N - i) / sqrt(4^N - 1)
 
         F = RecursiveFilter(F, dx_horizontal, σHi)
         # Transpose the image for the vertical pass of the filter
         F = TransposeImage(F)
 
         F = RecursiveFilter(F, dy_vertical, σHi)
+        # Transpose the image back to the original orientation
         F = TransposeImage(F)
     end
 
     return F
 end
 
-function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB}, derivative::Matrix{Float32}, σH::Float32)
-    J = copy(channelview(img))
+function RecursiveFilter(img, derivative, σH)
+    J = img
     # Getting the dimensions of the image
     # Number of channels
     channels = size(J, 1)
@@ -72,7 +90,8 @@ function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB}, derivative::Matri
     w = size(J, 3)
     
     # Calculating the feedback coefficient
-    a = exp(-sqrt(2) ÷ σH)
+    a = exp(-sqrt(2) / σHi)
+    a_d = fill(a, (h, w))
 
     #=
     a^d
@@ -81,7 +100,12 @@ function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB}, derivative::Matri
     So d is the distance between neighbor samples x[n] and x[n-1] in the transformed domain
     That's why we use the l1 norm of the pixels
     =#
-    a_d = a .^ derivative
+
+    for i in 1:h
+        for j in 1:w
+            a_d[i, j] = a ^ derivative[i, j]
+        end
+    end
 
     #= 
     Equation 21 of the paper
@@ -89,36 +113,58 @@ function RecursiveFilter(img::AbstractArray{<:ColorTypes.RGB}, derivative::Matri
     Where [n - 1] can be interpreted as the distance between samples x[n - 1] and x[n]
     =#
     # Left -> Right filtering
-    for i in 2:w
-        for c in 1:channels
-            J[c, :, i] = J[c, :, i] + a_d[:, i] .* (J[c, :, i-1] - J[c, :, i])
+    for c in 1:channels
+        for i in 1:h
+            for j in 2:505
+                J[c, i, j] = clamp(J[c, i, j] + a_d[i, j] * (J[c, i, j-1] - J[c, i, j]), 0, 1)
+            end
         end
     end
 
     # Right -> Left filtering
-    for i in w-1:-1:1
-        for i in 1:c
-            J[c, i, :] = J[c, i, :] + a_d[:, i + 1] .* (J[c, :, i + 1] - J[c, :, i])
+    for i in 1:h
+        for j in w-1:-1:1
+            for c in 1:channels
+                J[c, i, j] = clamp.((J[c, i, j]) + a_d[i, j+1] * (J[c, i, j+1] - J[c, i ,j]), 0, 1)
+            end
         end
-    end 
+    end
 
     return J
 end
 
-function TransposeImage(img::AbstractArray{<:Colors.RGB, 2})
+function TransposeMatrix(matrix)
+    h = size(matrix, 1)
+    w = size(matrix, 2)
+
+    # Creating a transposed matrix with the correct size
+    transposed_matrix = similar(matrix, w, h)
+
+    # Assigning each row of the original matrix to a column in the transposed one
+    for i in 1:h
+        transposed_matrix[:, i] = matrix[i, :]
+    end
+
+    return transposed_matrix
+end
+
+function TransposeImage(img)
     # Getting the height of the image
-    h = size(img, 1)
+    h = size(img, 2)
     
     # Creating a transposed image with the correct size
-    transposed_image = similar(img, size(img, 2), size(img, 1))
+    transposed_image = similar(img, size(img, 1), size(img, 3), size(img, 2))
     
+    # Assigning each row of the original img to a column in the transposed one
     for i in 1:h
-        transposed_image[:, i] = img[i, :]
+        transposed_image[:, :, i] = img[:, i, :]
     end
     
     return transposed_image
 end
 
+
 using Images, FileIO
-img = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\statue.png")
-F = TransformedDomain(img, )
+img_original = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\statue.png")
+img_filtrada = colorview(RGB, TransformedDomainRecursiveFilter(img_original, 60, 0.4, 3))
+mosaic(img_original, img_filtrada; nrow = 1)
