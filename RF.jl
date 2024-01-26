@@ -90,7 +90,7 @@ function RecursiveFilter(img, derivative, σH)
     w = size(J, 3)
     
     # Calculating the feedback coefficient
-    a = exp(-sqrt(2) / σHi)
+    a = exp(-sqrt(2) / σH)
     a_d = fill(a, (h, w))
 
     #=
