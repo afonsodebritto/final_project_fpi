@@ -115,7 +115,7 @@ function RecursiveFilter(img, derivative, σH)
     # Left -> Right filtering
     for c in 1:channels
         for i in 1:h
-            for j in 2:505
+            for j in 2:w
                 J[c, i, j] = clamp(J[c, i, j] + a_d[i, j] * (J[c, i, j-1] - J[c, i, j]), 0, 1)
             end
         end
