@@ -2,7 +2,7 @@
 
 julia_version = "1.9.4"
 manifest_format = "2.0"
-project_hash = "a3410cf454c226dc3a27e80039fd8093da4667fb"
+project_hash = "588efc0d9769f6d030162391314bc6fa98c77026"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -202,6 +202,14 @@ version = "3.1.7+0"
 git-tree-sha1 = "012e604e1c7458645cb8b436f8fba789a51b257f"
 uuid = "9b13fd28-a010-5f03-acff-a1bbcff69959"
 version = "1.0.0"
+
+[[deps.Infinity]]
+deps = ["Dates", "Random", "Requires"]
+git-tree-sha1 = "cf8234411cbeb98676c173f930951ea29dca3b23"
+repo-rev = "master"
+repo-url = "https://github.com/cjdoris/Infinity.jl"
+uuid = "a303e19e-6eb4-11e9-3b09-cd9505f79100"
+version = "0.2.4"
 
 [[deps.Inflate]]
 git-tree-sha1 = "ea8031dea4aff6bd41f1df8f2fdfb25b33626381"
