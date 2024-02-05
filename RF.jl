@@ -165,6 +165,6 @@ end
 
 
 using Images, FileIO
-img_original = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\statue.png")
-img_filtrada = colorview(RGB, TransformedDomainRecursiveFilter(img_original, 60, 0.4, 3))
+img_original = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\flower.jpg")
+img_filtrada = colorview(RGB, TransformedDomainRecursiveFilter(img_original, 40, 0.4, 3))
 mosaic(img_original, img_filtrada; nrow = 1)

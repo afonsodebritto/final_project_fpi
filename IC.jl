@@ -1,17 +1,9 @@
-function TransformedDomainNormalizedConvolution(img, σs, σr, N, joint_image=nothing)
+function TransformedDomainInterpolatedConvolution(img, σs, σr, N)
     # Calculating the partial derivatives for all the channels
     # I'k(x)
     # I'k(y)
     I = float.(channelview(img))
-    if joint_image !== nothing
-        J = float.(channelview(joint_image))
-        if size(I, 2) !== size(J, 2) || size(I, 3) !== size(J, 3)
-            error("Input and joint images must have equal width and height.")
-        end
-    else
-        J = I
-    end
-    
+    J = I
     dx_partial = diff(J, dims=3)
     dy_partial = diff(J, dims=2)
 
@@ -94,7 +86,7 @@ function TransformedDomainNormalizedConvolution(img, σs, σr, N, joint_image=no
     return F
 end
 
-function NormalizedConvolution(img, domain_transform, box_filter_radius)
+function InterpolatedConvolution(img, domain_transform, box_filter_radius)
     h = size(img, 2)
     w = size(img, 3)
     channels = size(img, 1)
@@ -133,11 +125,51 @@ function NormalizedConvolution(img, domain_transform, box_filter_radius)
         upper_indexes[i,:] = upper_limit_cur_row_index
     end
 
+    # Calculating the heights of the trapezoids
+    heights = 0.5 .* (img[:,:,2:end] + img[:,:,1:end-1])
+    # Calculating the width of the trapezoids
+    widths = domain_transform[:,2:end] - domain_transform[:,1:end-1]
+    # Calculating the areas of the trapezoids
+    areas = similar(heights)
+    for i in 1:h
+        for j in 1:w-1
+            for c in 1:channels
+                areas[c,i,j] = heights[c,i,j] * widths[i,j]
+            end
+        end
+    end 
+
     # Calculating the summed area table
-    summed_area_table = zeros(channels, h, w+1)
-    summed_area_table[:,:,2:end] = cumsum(img, dims=3)
+    summed_area_table = zeros(channels, h, w)
+    summed_area_table[:,:,2:end] = cumsum(areas, dims=3)
+
+    # Adding paddings
+    # Padding the image
+    padded_img = zeros(channels,h,w+2)
+    padded_img[:,:,2:w+1] = img[:,:,:]
+    padded_img[:,:,1] = img[:,:,1]
+    padded_img[:,:,w+2] = img[:,:,w]
+    # Padding the summed area table
+    padded_summed_area_table = zeros(channels, h, w+2)
+    padded_summed_area_table[:,:,2:w+1] = summed_area_table[:,:,:]
+    # Padding the domain transform coordinates
+    padded_domain_transform = zeros(h,w+2)
+    padded_domain_transform[:,2:w+1] = domain_transform[:,:]
+    padded_domain_transform[:,1] = domain_transform[:,1]
+    padded_domain_transform[:,w+2] = domain_transform[:,w]
+
+    # Assuming pixels out of the bounds are equal to nearest border value
+    for i in 1:w+2
+        padded_domain_transform[i,1] = padded_domain_transform[i,1] - 1.2 * box_filter_radius
+    end
+    for i in 1:w+2
+        padded_domain_transform[i,w+2] = padded_domain_transform[i,w+2] - 1.2 * box_filter_radius
+    end
+
+    lower_indexes = lower_indexes .+ 1
 
     F = zeros(size(img))
+
 
     # Filtering the image
     for i in 1:h
@@ -182,8 +214,6 @@ function TransposeImage(img)
     return transposed_image
 end
 
-
-using Images, FileIO, Infinity
-img = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\pencils.jpg")
+using Images, FileIO, Infinity, ImageFiltering
+img = load("C:\\Users\\Afonso\\Documents\\GitHub\\final_project_fpi\\statue.png")
 img_filtrada = colorview(RGB, TransformedDomainNormalizedConvolution(img, 60, 0.4, 3))
-mosaic(img_original, img_filtrada; nrow = 1)
